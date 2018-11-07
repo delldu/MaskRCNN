@@ -22,6 +22,19 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.patches import Polygon
 
+import pdb
+
+from functools import wraps
+
+def debug(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        print("[DEBUG] {}(): ".format(func.__name__))
+        # print("  ", args, kwargs)
+        return func(*args, **kwargs)
+    return wrapper
+
+
 
 if "DISPLAY" not in os.environ:
     plt.switch_backend('agg')
@@ -339,9 +352,17 @@ def resize_mask(mask, scale, padding):
     padding: Padding to add to the mask in the form
             [(top, bottom), (left, right), (0, 0)]
     """
+    # (Pdb) p mask.shape
+    # (640, 427, 3)
+    # scale = 1.6 ==> 1024
+
     h, w = mask.shape[:2]
     mask = scipy.ndimage.zoom(mask, zoom=[scale, scale, 1], order=0)
     mask = np.pad(mask, padding, mode='constant', constant_values=0)
+
+    # (Pdb) p mask.shape
+    # (1024, 1024, 32)
+
     return mask
 
 

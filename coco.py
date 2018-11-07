@@ -46,6 +46,8 @@ from config import Config
 import utils
 import model as modellib
 
+# import pdb
+
 
 # Root directory of the project
 ROOT_DIR = os.getcwd()
@@ -104,11 +106,16 @@ class CocoDataset(utils.Dataset):
         if subset == "minival" or subset == "valminusminival":
             subset = "val"
         image_dir = "{}/{}{}".format(dataset_dir, subset, year)
+        # (Pdb) p image_dir
+        # 'data/val2014'
 
+        # pdb.set_trace()
+        # class_ids = None
         # Load all classes or a subset?
         if not class_ids:
             # All classes
             class_ids = sorted(coco.getCatIds())
+
 
         # All images or a subset?
         if class_ids:
@@ -135,6 +142,13 @@ class CocoDataset(utils.Dataset):
                 annotations=coco.loadAnns(coco.getAnnIds(
                     imgIds=[i], catIds=class_ids, iscrowd=None)))
             # print(os.path.join(image_dir, coco.imgs[i]['file_name']), class_ids)
+
+        # (Pdb) p class_ids
+        # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20,
+        # 21, 22, 23, 24, 25, 27, 28, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+        # 41, 42, 43, 44, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61,
+        # 62, 63, 64, 65, 67, 70, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+        # 82, 84, 85, 86, 87, 88, 89, 90]
 
         if return_coco:
             return coco
@@ -233,7 +247,6 @@ class CocoDataset(utils.Dataset):
 ############################################################
 #  COCO Evaluation
 ############################################################
-
 def build_coco_results(dataset, image_ids, rois, class_ids, scores, masks):
     """Arrange resutls to match COCO specs in http://cocodataset.org/#format
     """
@@ -260,7 +273,6 @@ def build_coco_results(dataset, image_ids, rois, class_ids, scores, masks):
             results.append(result)
     return results
 
-
 def evaluate_coco(model, dataset, coco, eval_type="bbox", limit=0, image_ids=None):
     """Runs official COCO evaluation.
     dataset: A Dataset object with valiadtion data
@@ -280,8 +292,12 @@ def evaluate_coco(model, dataset, coco, eval_type="bbox", limit=0, image_ids=Non
     t_prediction = 0
     t_start = time.time()
 
+    # pdb.set_trace()
+
     results = []
     for i, image_id in enumerate(image_ids):
+        if i % 10 == 0:
+            print("Evaluating ", eval_type, " ", i + 1, " ... ")
         # Load image
         image = dataset.load_image(image_id)
 
@@ -410,7 +426,6 @@ if __name__ == '__main__':
         # *** This training schedule is an example. Update to your needs ***
 
         # Training - Stage 1
-        print("Training network heads")
         model.train_model(
             dataset_train,
             dataset_val,
@@ -420,7 +435,6 @@ if __name__ == '__main__':
 
         # Training - Stage 2
         # Finetune layers from ResNet stage 4 and up
-        print("Fine tune Resnet stage 4 and up")
         model.train_model(
             dataset_train,
             dataset_val,
@@ -430,7 +444,6 @@ if __name__ == '__main__':
 
         # Training - Stage 3
         # Fine tune all layers
-        print("Fine tune all layers")
         model.train_model(
             dataset_train,
             dataset_val,

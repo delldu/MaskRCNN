@@ -12,58 +12,79 @@
 **Example2** 
 ![](output/cruiseimg8250.jpg)
 
+
+
 ## Demo
 
-`python predict.py image/car58a54312d.jpg`
+`python predict.py images/car58a54312d.jpg`
 
 
 ## Training
-1. `Put Coco files under data directory.`
+1.` Put Coco files under data directory.`  
 
-   `data/`
-   `├── annotations`
-   `├── test2014`
-   `├── train2014`
-   `└── val2014`
+   `data/`  
+   `├── annotations`    
+   `├── test2014`    
+   `├── train2014`  
+   `└── val2014`  
 
-2. `./train.sh`
+2.` ./train.sh`  
+
+
+
+## Evaluation
+
+```
+./eval.sh
+
+DONE (t=2.57s).
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.317  
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.525  
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.336  
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.139  
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.366  
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.492  
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.261  
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.369  
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.379  
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.169  
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.425  
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.562  
+Prediction time: 349.81333112716675. Average 0.6996266622543335/image
+Total time:  401.12283730506897
+```
+
 
 
 ## Requirements
-* Python 3.6
-* Pytorch 0.4.0
-* matplotlib, scipy, skimage
+
+* Python 3.6.2
+
+* Pytorch 1.0.0
+
+* matplotlib, scipy, scikit-image
+
 
 ## Installation
 1. Clone this repository.
 
         git clone https://github.com/delldu/MaskRCNN.git
+        
+        cd MaskRCNN/models
+        ./model_merge.sh  
+        cd ..  
 
-2. We use functions from two more repositories that need to be build with the right `--arch` option for cuda. The two functions are Non-Maximum Suppression from ruotianluo's [pytorch-faster-rcnn](https://github.com/ruotianluo/pytorch-faster-rcnn)
-       repository and longcw's [RoiAlign](https://github.com/longcw/RoIAlign.pytorch).
+2. Install c++ extension packages
 
-| GPU | arch |
-| --- | --- |
-| TitanX | sm_52 |
-| GTX 960M | sm_50 |
-| GTX 1070 | sm_61 |
-| GTX 1080 (Ti) | sm_61 |
-
-       cd nms/src/cuda/
-       nvcc -c -o nms_kernel.cu.o nms_kernel.cu -x cu -Xcompiler -fPIC -arch=[arch]
-       cd ../../
-       python build.py
+       cd c++ext  
+       make  
        cd ../
        
-       cd roialign/roi_align/src/cuda/
-       nvcc -c -o crop_and_resize_kernel.cu.o crop_and_resize_kernel.cu -x cu -Xcompiler -fPIC -arch=[arch]
-       cd ../../
-       python build.py
-       cd ../../
-       
-       cd cocoapi/PythonAPI
-       python setup.py install
+       cd cocoapi/PythonAPI  
+       make  
        cd ../..
+
+
 
 ## Thanks
 

@@ -82,8 +82,8 @@ class Config(object):
     # ROIs kept after non-maximum supression (training and inference)
     # POST_NMS_ROIS_TRAINING = 1000
     # POST_NMS_ROIS_INFERENCE = 500
-    POST_NMS_ROIS_TRAINING = 600
-    POST_NMS_ROIS_INFERENCE = 300
+    POST_NMS_ROIS_TRAINING = 500
+    POST_NMS_ROIS_INFERENCE = 250
 
     # If enabled, resizes instance masks to a smaller size to reduce
     # memory load. Recommended when using high-resolution images.
@@ -94,8 +94,7 @@ class Config(object):
     # Images are resized such that the smallest side is >= IMAGE_MIN_DIM and
     # the longest side is <= IMAGE_MAX_DIM. In case both conditions can't
     # be satisfied together the IMAGE_MAX_DIM is enforced.
-    # IMAGE_MIN_DIM = 800
-    IMAGE_MIN_DIM = 720
+    IMAGE_MIN_DIM = 800
     IMAGE_MAX_DIM = 1024
     # If True, pad images with zeros such that they're (max_dim by max_dim)
     IMAGE_PADDING = True  # currently, the False option is not supported
@@ -109,7 +108,7 @@ class Config(object):
     # ratio of 1:3. You can increase the number of proposals by adjusting
     # the RPN NMS threshold.
     # TRAIN_ROIS_PER_IMAGE = 200
-    TRAIN_ROIS_PER_IMAGE = 150
+    TRAIN_ROIS_PER_IMAGE = 100
 
     # Percent of positive ROIs used to train classifier/mask heads
     ROI_POSITIVE_RATIO = 0.33
@@ -120,8 +119,7 @@ class Config(object):
     MASK_SHAPE = [28, 28]
 
     # Maximum number of ground truth instances to use in one image
-    # MAX_GT_INSTANCES = 50
-    MAX_GT_INSTANCES = 40
+    MAX_GT_INSTANCES = 50
 
     # Bounding box refinement standard deviation for RPN and final detections.
     RPN_BBOX_STD_DEV = np.array([0.1, 0.1, 0.2, 0.2])
@@ -129,7 +127,7 @@ class Config(object):
 
     # Max number of final detections
     # DETECTION_MAX_INSTANCES = 50
-    DETECTION_MAX_INSTANCES = 40
+    DETECTION_MAX_INSTANCES = 50
 
     # Minimum probability value to accept a detected instance
     # ROIs below this threshold are skipped
