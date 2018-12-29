@@ -30,6 +30,7 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 import os
 import time
 import numpy as np
+import pdb
 
 # Download and install the Python COCO tools from https://github.com/waleedka/coco
 # That's a fork from the original https://github.com/pdollar/coco with a bug
@@ -41,13 +42,11 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as maskUtils
 
-
 from config import Config
 import utils
 import model as modellib
 
 # import pdb
-
 
 # Root directory of the project
 ROOT_DIR = os.getcwd()
@@ -88,9 +87,15 @@ class CocoConfig(Config):
 #  Dataset
 ############################################################
 
+
 class CocoDataset(utils.Dataset):
-    def load_coco(self, dataset_dir, subset, year=DEFAULT_DATASET_YEAR, class_ids=None,
-                  class_map=None, return_coco=False):
+    def load_coco(self,
+                  dataset_dir,
+                  subset,
+                  year=DEFAULT_DATASET_YEAR,
+                  class_ids=None,
+                  class_map=None,
+                  return_coco=False):
         """Load a subset of the COCO dataset.
         dataset_dir: The root directory of the COCO dataset.
         subset: What to load (train, val, minival, valminusminival)
@@ -106,6 +111,7 @@ class CocoDataset(utils.Dataset):
         if subset == "minival" or subset == "valminusminival":
             subset = "val"
         image_dir = "{}/{}{}".format(dataset_dir, subset, year)
+
         # (Pdb) p image_dir
         # 'data/val2014'
 
@@ -115,7 +121,6 @@ class CocoDataset(utils.Dataset):
         if not class_ids:
             # All classes
             class_ids = sorted(coco.getCatIds())
-
 
         # All images or a subset?
         if class_ids:
@@ -135,12 +140,14 @@ class CocoDataset(utils.Dataset):
         # Add images
         for i in image_ids:
             self.add_image(
-                "coco", image_id=i,
+                "coco",
+                image_id=i,
                 path=os.path.join(image_dir, coco.imgs[i]['file_name']),
                 width=coco.imgs[i]["width"],
                 height=coco.imgs[i]["height"],
-                annotations=coco.loadAnns(coco.getAnnIds(
-                    imgIds=[i], catIds=class_ids, iscrowd=None)))
+                annotations=coco.loadAnns(
+                    coco.getAnnIds(imgIds=[i], catIds=class_ids,
+                                   iscrowd=None)))
             # print(os.path.join(image_dir, coco.imgs[i]['file_name']), class_ids)
 
         # (Pdb) p class_ids
@@ -175,9 +182,11 @@ class CocoDataset(utils.Dataset):
         annotations = self.image_info[image_id]["annotations"]
         # Build mask of shape [height, width, instance_count] and list
         # of class IDs that correspond to each channel of the mask.
+        # pdb.set_trace()
+
         for annotation in annotations:
-            class_id = self.map_source_class_id(
-                "coco.{}".format(annotation['category_id']))
+            class_id = self.map_source_class_id("coco.{}".format(
+                annotation['category_id']))
             if class_id:
                 m = self.annToMask(annotation, image_info["height"],
                                    image_info["width"])
@@ -191,8 +200,11 @@ class CocoDataset(utils.Dataset):
                     class_id *= -1
                     # For crowd masks, annToMask() sometimes returns a mask
                     # smaller than the given dimensions. If so, resize it.
-                    if m.shape[0] != image_info["height"] or m.shape[1] != image_info["width"]:
-                        m = np.ones([image_info["height"], image_info["width"]], dtype=bool)
+                    if m.shape[0] != image_info["height"] or m.shape[
+                            1] != image_info["width"]:
+                        m = np.ones(
+                            [image_info["height"], image_info["width"]],
+                            dtype=bool)
                 instance_masks.append(m)
                 class_ids.append(class_id)
 
@@ -200,6 +212,12 @@ class CocoDataset(utils.Dataset):
         if class_ids:
             mask = np.stack(instance_masks, axis=2)
             class_ids = np.array(class_ids, dtype=np.int32)
+
+            # (Pdb) class_ids.shape, class_ids
+            # ((11,), array([63, 63, 63, 63, 64, 74, 40, 63, 67, 67, 67], dtype=int32))
+            # (Pdb)  type(mask), mask.shape
+            # (<class 'numpy.ndarray'>, (349, 500, 11))
+
             return mask, class_ids
         else:
             # Call super class to return an empty mask
@@ -266,14 +284,21 @@ def build_coco_results(dataset, image_ids, rois, class_ids, scores, masks):
             result = {
                 "image_id": image_id,
                 "category_id": dataset.get_source_class_id(class_id, "coco"),
-                "bbox": [bbox[1], bbox[0], bbox[3] - bbox[1], bbox[2] - bbox[0]],
+                "bbox":
+                [bbox[1], bbox[0], bbox[3] - bbox[1], bbox[2] - bbox[0]],
                 "score": score,
                 "segmentation": maskUtils.encode(np.asfortranarray(mask))
             }
             results.append(result)
     return results
 
-def evaluate_coco(model, dataset, coco, eval_type="bbox", limit=0, image_ids=None):
+
+def evaluate_coco(model,
+                  dataset,
+                  coco,
+                  eval_type="bbox",
+                  limit=0,
+                  image_ids=None):
     """Runs official COCO evaluation.
     dataset: A Dataset object with valiadtion data
     eval_type: "bbox" or "segm" for bounding box or segmentation evaluation
@@ -331,34 +356,44 @@ def evaluate_coco(model, dataset, coco, eval_type="bbox", limit=0, image_ids=Non
 #  Training
 ############################################################
 
-
 if __name__ == '__main__':
     import argparse
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(
         description='Train Mask R-CNN on MS COCO.')
-    parser.add_argument("command",
-                        metavar="<command>",
-                        help="'train' or 'evaluate' on MS COCO")
-    parser.add_argument('--dataset', required=True,
-                        metavar="/path/to/coco/",
-                        help='Directory of the MS-COCO dataset')
-    parser.add_argument('--year', required=False,
-                        default=DEFAULT_DATASET_YEAR,
-                        metavar="<year>",
-                        help='Year of the MS-COCO dataset (2014 or 2017) (default=2014)')
-    parser.add_argument('--model', required=False,
-                        metavar="/path/to/weights.pth",
-                        help="Path to weights .pth file or 'coco'")
-    parser.add_argument('--logs', required=False,
-                        default=DEFAULT_LOGS_DIR,
-                        metavar="/path/to/logs/",
-                        help='Logs and checkpoints directory (default=logs/)')
-    parser.add_argument('--limit', required=False,
-                        default=500,
-                        metavar="<image count>",
-                        help='Images to use for evaluation (default=500)')
+    parser.add_argument(
+        "command",
+        metavar="<command>",
+        help="'train' or 'evaluate' on MS COCO")
+    parser.add_argument(
+        '--dataset',
+        required=True,
+        metavar="/path/to/coco/",
+        help='Directory of the MS-COCO dataset')
+    parser.add_argument(
+        '--year',
+        required=False,
+        default=DEFAULT_DATASET_YEAR,
+        metavar="<year>",
+        help='Year of the MS-COCO dataset (2014 or 2017) (default=2014)')
+    parser.add_argument(
+        '--model',
+        required=False,
+        metavar="/path/to/weights.pth",
+        help="Path to weights .pth file or 'coco'")
+    parser.add_argument(
+        '--logs',
+        required=False,
+        default=DEFAULT_LOGS_DIR,
+        metavar="/path/to/logs/",
+        help='Logs and checkpoints directory (default=logs/)')
+    parser.add_argument(
+        '--limit',
+        required=False,
+        default=500,
+        metavar="<image count>",
+        help='Images to use for evaluation (default=500)')
     args = parser.parse_args()
     print("Command: ", args.command)
     print("Model: ", args.model)
@@ -370,12 +405,14 @@ if __name__ == '__main__':
     if args.command == "train":
         config = CocoConfig()
     else:
+
         class InferenceConfig(CocoConfig):
             # Set batch size to 1 since we'll be running inference on
             # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
             GPU_COUNT = 1
             IMAGES_PER_GPU = 1
             DETECTION_MIN_CONFIDENCE = 0
+
         config = InferenceConfig()
     config.display()
 
@@ -391,9 +428,6 @@ if __name__ == '__main__':
     if args.model:
         if args.model.lower() == "coco":
             model_path = COCO_MODEL_PATH
-        elif args.model.lower() == "last":
-            # Find last trained weights
-            model_path = model.find_last()[1]
         elif args.model.lower() == "imagenet":
             # Start from ImageNet trained weights
             model_path = config.IMAGENET_MODEL_PATH
@@ -412,10 +446,10 @@ if __name__ == '__main__':
         # validation set, as as in the Mask RCNN paper.
         dataset_train = CocoDataset()
 
-        dataset_train.load_coco(
-            args.dataset, "train", year=args.year)
+        dataset_train.load_coco(args.dataset, "train", year=args.year)
 
-        dataset_train.load_coco(args.dataset, "valminusminival", year=args.year)
+        # dataset_train.load_coco(
+        #     args.dataset, "valminusminival", year=args.year)
         dataset_train.prepare()
 
         # Validation dataset
@@ -426,21 +460,21 @@ if __name__ == '__main__':
         # *** This training schedule is an example. Update to your needs ***
 
         # Training - Stage 1
-        model.train_model(
-            dataset_train,
-            dataset_val,
-            learning_rate=config.LEARNING_RATE,
-            epochs=40,
-            layers='heads')
+        # model.train_model(
+        #     dataset_train,
+        #     dataset_val,
+        #     learning_rate=config.LEARNING_RATE,
+        #     epochs=40,
+        #     layers='heads')
 
-        # Training - Stage 2
-        # Finetune layers from ResNet stage 4 and up
-        model.train_model(
-            dataset_train,
-            dataset_val,
-            learning_rate=config.LEARNING_RATE,
-            epochs=120,
-            layers='4+')
+        # # Training - Stage 2
+        # # Finetune layers from ResNet stage 4 and up
+        # model.train_model(
+        #     dataset_train,
+        #     dataset_val,
+        #     learning_rate=config.LEARNING_RATE,
+        #     epochs=120,
+        #     layers='4+')
 
         # Training - Stage 3
         # Fine tune all layers

@@ -19,34 +19,33 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data
-from torch.autograd import Variable
 
 import utils
 
-# import pdb
+import pdb
 import maskrcnn
 
 ############################################################
 #  Logging Utility Functions
 ############################################################
+
 def log(text, array=None):
     """Prints a text message. And, optionally, if a Numpy array is provided it
     prints it's shape, min, and max values.
     """
     if array is not None:
         text = text.ljust(25)
-        text += ("shape: {:20}  min: {:10.5f}  max: {:10.5f}".format(
-            str(array.shape),
+        text += ("shape: {:20}  min: {:10.5f}  max: {:10.5f}".format(str(array.shape),
             array.min() if array.size else "",
             array.max() if array.size else ""))
     print(text)
 
 
-def printProgressBar(iteration, total, prefix='', suffix='', decimals=1, length=100, fill='█'):
+def progress(loc, total, prefix='', suffix='', decimals=1, length=100, fill='█'):
     """
     Call in a loop to create terminal progress bar
     @params:
-        iteration   - Required  : current iteration (Int)
+        loc         - Required  : current location (Int)
         total       - Required  : total iterations (Int)
         prefix      - Optional  : prefix string (Str)
         suffix      - Optional  : suffix string (Str)
@@ -54,61 +53,36 @@ def printProgressBar(iteration, total, prefix='', suffix='', decimals=1, length=
         length      - Optional  : character length of bar (Int)
         fill        - Optional  : bar fill character (Str)
     """
-    percent = ("{0:." + str(decimals) + "f}").format(
-        100 * (iteration / float(total)))
-    filledLength = int(length * iteration // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (loc / float(total)))
+    filled_length = int(length * loc // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
     print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end='\n')
     # Print New Line on Complete
-    if iteration == total:
+    if loc == total:
         print()
 
 
-############################################################
-#  Pytorch Utility Functions
-############################################################
-def unique1d(tensor):
-    if tensor.size()[0] == 0 or tensor.size()[0] == 1:
-        return tensor
-    tensor = tensor.sort()[0]
-    unique_bool = tensor[1:] != tensor[:-1]
-    first_element = Variable(torch.ByteTensor([True]), requires_grad=False)
-    if tensor.is_cuda:
-        first_element = first_element.cuda()
-    unique_bool = torch.cat((first_element, unique_bool), dim=0)
-    return tensor[unique_bool.data]
-
 def intersect1d(tensor1, tensor2):
+    # xxxx3333 torch.IntTensor(list(set(tensor1.tolist()) & set(tensor2.tolist())))
     aux = torch.cat((tensor1, tensor2), dim=0)
     aux = aux.sort()[0]
     return aux[:-1][(aux[1:] == aux[:-1]).data]
 
-
-def log2(x):
-    """Implementatin of Log2. Pytorch doesn't have a native implemenation."""
-    ln2 = Variable(torch.log(torch.FloatTensor([2.0])), requires_grad=False)
-    if x.is_cuda:
-        ln2 = ln2.cuda()
-    return torch.log(x) / ln2
-
 class SamePad2d(nn.Module):
-    """Mimics tensorflow's 'SAME' padding.
+    """'SAME' padding.
     """
-
     def __init__(self, kernel_size, stride):
         super(SamePad2d, self).__init__()
-        self.kernel_size = torch.nn.modules.utils._pair(kernel_size)
-        self.stride = torch.nn.modules.utils._pair(stride)
+        self.kernel_size = kernel_size
+        self.stride = stride
 
     def forward(self, input):
-        in_width = input.size()[2]
-        in_height = input.size()[3]
-        out_width = math.ceil(float(in_width) / float(self.stride[0]))
-        out_height = math.ceil(float(in_height) / float(self.stride[1]))
-        pad_along_width = (
-            (out_width - 1) * self.stride[0] + self.kernel_size[0] - in_width)
-        pad_along_height = (
-            (out_height - 1) * self.stride[1] + self.kernel_size[1] - in_height)
+        in_width = input.size(2)
+        in_height = input.size(3)
+        out_width = math.ceil(float(in_width) / float(self.stride))
+        out_height = math.ceil(float(in_height) / float(self.stride))
+        pad_along_width = ((out_width - 1) * self.stride + self.kernel_size - in_width)
+        pad_along_height = ((out_height - 1) * self.stride + self.kernel_size - in_height)
         pad_left = math.floor(pad_along_width / 2)
         pad_top = math.floor(pad_along_height / 2)
         pad_right = pad_along_width - pad_left
@@ -123,6 +97,8 @@ class SamePad2d(nn.Module):
 #  FPN Graph
 ############################################################
 class FPN(nn.Module):
+    """See the paper "Feature Pyramid Networks for Object Detection" for more details."""
+
     def __init__(self, C1, C2, C3, C4, C5, out_channels):
         super(FPN, self).__init__()
         self.out_channels = out_channels
@@ -163,6 +139,7 @@ class FPN(nn.Module):
         c2_out = x
         x = self.C3(x)
         c3_out = x
+
         x = self.C4(x)
         c4_out = x
         x = self.C5(x)
@@ -261,13 +238,18 @@ class ResNet(nn.Module):
                 self.block, 512, self.layers[3], stride=2)
         else:
             self.C5 = None
+        # pdb.set_trace()
+
 
     def forward(self, x):
+        pdb.set_trace()
+
         x = self.C1(x)
         x = self.C2(x)
         x = self.C3(x)
         x = self.C4(x)
-        x = self.C5(x)
+        if self.C5:
+            x = self.C5(x)
         return x
 
     def stages(self):
@@ -304,15 +286,24 @@ def apply_box_deltas(boxes, deltas):
     deltas: [N, 4] where each row is [dy, dx, log(dh), log(dw)]
     """
     # Convert to y, x, h, w
+    # pdb.set_trace()
+    # (Pdb) p boxes.size(), deltas.size()
+    # (torch.Size([6000, 4]), torch.Size([6000, 4]))
+    # y2 - y1
     height = boxes[:, 2] - boxes[:, 0]
+    # x2 - x1
     width = boxes[:, 3] - boxes[:, 1]
     center_y = boxes[:, 0] + 0.5 * height
     center_x = boxes[:, 1] + 0.5 * width
     # Apply deltas
     center_y += deltas[:, 0] * height
     center_x += deltas[:, 1] * width
+
+    # log(dh)
     height *= torch.exp(deltas[:, 2])
+    # log(dw)
     width *= torch.exp(deltas[:, 3])
+
     # Convert back to y1, x1, y2, x2
     y1 = center_y - 0.5 * height
     x1 = center_x - 0.5 * width
@@ -332,6 +323,7 @@ def clip_boxes(boxes, window):
          boxes[:, 1].clamp(float(window[1]), float(window[3])),
          boxes[:, 2].clamp(float(window[0]), float(window[2])),
          boxes[:, 3].clamp(float(window[1]), float(window[3]))], 1)
+
     return boxes
 
 
@@ -351,6 +343,14 @@ def proposal_layer(inputs, proposal_count, nms_threshold, anchors,
     """
 
     # Currently only supports batchsize 1
+    # pdb.set_trace()
+    # inputs = [rpn_class, rpn_bbox]
+    # (Pdb) inputs[0].size()
+    # torch.Size([1, 261888, 2])
+    # (Pdb) inputs[1].size()
+    # torch.Size([1, 261888, 4])
+    # proposal_count = 250
+
     inputs[0] = inputs[0].squeeze(0)
     inputs[1] = inputs[1].squeeze(0)
 
@@ -359,16 +359,15 @@ def proposal_layer(inputs, proposal_count, nms_threshold, anchors,
 
     # Box deltas [batch, num_rois, 4]
     deltas = inputs[1]
-    std_dev = Variable(
-        torch.from_numpy(np.reshape(config.RPN_BBOX_STD_DEV, [1, 4])).float(),
-        requires_grad=False)
+    # config.RPN_BBOX_STD_DEV[0.1,  0.1,  0.2,  0.2]
+    std_dev = torch.Tensor(config.RPN_BBOX_STD_DEV).view(1, 4)
     if config.GPU_COUNT:
         std_dev = std_dev.cuda()
     deltas = deltas * std_dev
 
     # Improve performance by trimming to top anchors by score
     # and doing the rest on the smaller subset.
-    pre_nms_limit = min(6000, anchors.size()[0])
+    pre_nms_limit = min(500, anchors.size(0))
     scores, order = scores.sort(descending=True)
     order = order[:pre_nms_limit]
     scores = scores[:pre_nms_limit]
@@ -381,7 +380,7 @@ def proposal_layer(inputs, proposal_count, nms_threshold, anchors,
 
     # Clip to image boundaries. [batch, N, (y1, x1, y2, x2)]
     height, width = config.IMAGE_SHAPE[:2]
-    window = np.array([0, 0, height, width]).astype(np.float32)
+    window = [0, 0, height, width]
     boxes = clip_boxes(boxes, window)
 
     # Filter out small boxes
@@ -394,15 +393,17 @@ def proposal_layer(inputs, proposal_count, nms_threshold, anchors,
     boxes = boxes[keep, :]
 
     # Normalize dimensions to range of 0 to 1.
-    norm = Variable(
-        torch.from_numpy(np.array([height, width, height, width])).float(),
-        requires_grad=False)
+
+    norm = torch.FloatTensor([height, width, height, width])
     if config.GPU_COUNT:
         norm = norm.cuda()
     normalized_boxes = boxes / norm
 
     # Add back batch dimension
     normalized_boxes = normalized_boxes.unsqueeze(0)
+    # pdb.set_trace()
+    # (Pdb) normalized_boxes.size()
+    # torch.Size([1, 250, 4])
 
     return normalized_boxes
 
@@ -414,6 +415,7 @@ def pyramid_roi_align(inputs, pool_size, image_shape):
     """Implements ROI Pooling on multiple levels of the feature pyramid.
 
     Params:
+    - inputs = [boxes] + feature_map !!!
     - pool_size: [height, width] of the output pooled regions. Usually [7, 7]
     - image_shape: [height, width, channels]. Shape of input image in pixels
 
@@ -432,6 +434,20 @@ def pyramid_roi_align(inputs, pool_size, image_shape):
     # Currently only supports batchsize 1
     # pdb.set_trace()
     # inputs -- list(), len(inputs) = 5, inputs[0].shape => torch.Size([100, 4])
+    # (Pdb) len(inputs)
+    # 5
+    # (Pdb) inputs[0].size()
+    # torch.Size([1, 250, 4]) -- boxes ...
+    # (Pdb) inputs[1].size()
+    # torch.Size([1, 256, 256, 256])
+    # (Pdb) inputs[2].size()
+    # torch.Size([1, 256, 128, 128])
+    # (Pdb) inputs[3].size()
+    # torch.Size([1, 256, 64, 64])
+    # (Pdb) inputs[4].size()
+    # torch.Size([1, 256, 32, 32])
+
+
     # pool_size = 7
     # image_shape = array([1024, 1024,    3])
     for i in range(len(inputs)):
@@ -452,18 +468,22 @@ def pyramid_roi_align(inputs, pool_size, image_shape):
     # Equation 1 in the Feature Pyramid Networks paper. Account for
     # the fact that our coordinates are normalized here.
     # e.g. a 224x224 ROI (in pixels) maps to P4
-    image_area = Variable(
-        torch.FloatTensor([float(image_shape[0] * image_shape[1])]),
-        requires_grad=False)
+
+    image_area = torch.FloatTensor([float(image_shape[0] * image_shape[1])])
+
     if boxes.is_cuda:
         image_area = image_area.cuda()
-    roi_level = 4 + log2(torch.sqrt(h * w) / (224.0 / torch.sqrt(image_area)))
+    roi_level = 4 + torch.log2(torch.sqrt(h * w) / (224.0 / torch.sqrt(image_area)))
     roi_level = roi_level.round().int()
     roi_level = roi_level.clamp(2, 5)
+
+    # (Pdb) roi_level.size()
+    # torch.Size([250, 1])
 
     # Loop through levels and apply ROI pooling to each. P2 to P5.
     pooled = []
     box_to_level = []
+    # range(2, 6) -- [2,3,4,5]
     for i, level in enumerate(range(2, 6)):
         ix = roi_level == level
         if not ix.any():
@@ -486,8 +506,7 @@ def pyramid_roi_align(inputs, pool_size, image_shape):
         # Here we use the simplified approach of a single value per bin,
         # which is how it's done in tf.crop_and_resize()
         # Result: [batch * num_boxes, pool_height, pool_width, channels]
-        ind = Variable(
-            torch.zeros(level_boxes.size()[0]), requires_grad=False).int()
+        ind = torch.zeros(level_boxes.size(0)).int()
         if level_boxes.is_cuda:
             ind = ind.cuda()
         feature_maps[i] = feature_maps[i].unsqueeze(0)  #CropAndResizeFunction needs batch dimension
@@ -510,6 +529,10 @@ def pyramid_roi_align(inputs, pool_size, image_shape):
     _, box_to_level = torch.sort(box_to_level)
     pooled = pooled[box_to_level, :, :]
 
+    # pdb.set_trace()
+    # (Pdb) pooled.size()
+    # torch.Size([250, 256, 7, 7])
+
     return pooled
 
 
@@ -525,10 +548,13 @@ def bbox_overlaps(boxes1, boxes2):
     # TF doesn't have an equivalent to np.repeate() so simulate it
     # using tf.tile() and tf.reshape.
     # pdb.set_trace()
-    # boxes1 -- (500, 4), boxes2 -- (9, 4)
+    # (Pdb) boxes1.size()
+    # torch.Size([500, 4])
+    # (Pdb) boxes2.size()
+    # torch.Size([3, 4])
 
-    boxes1_repeat = boxes2.size()[0]
-    boxes2_repeat = boxes1.size()[0]
+    boxes1_repeat = boxes2.size(0)
+    boxes2_repeat = boxes1.size(0)
     boxes1 = boxes1.repeat(1, boxes1_repeat).view(-1, 4)
     boxes2 = boxes2.repeat(boxes2_repeat, 1)
     # boxes1 -- (4500, 4)
@@ -541,7 +567,7 @@ def bbox_overlaps(boxes1, boxes2):
     x1 = torch.max(b1_x1, b2_x1)[:, 0]
     y2 = torch.min(b1_y2, b2_y2)[:, 0]
     x2 = torch.min(b1_x2, b2_x2)[:, 0]
-    zeros = Variable(torch.zeros(y1.size()[0]), requires_grad=False)
+    zeros = torch.zeros(y1.size(0))
     if y1.is_cuda:
         zeros = zeros.cuda()
     intersection = torch.max(x2 - x1, zeros) * torch.max(y2 - y1, zeros)
@@ -555,13 +581,16 @@ def bbox_overlaps(boxes1, boxes2):
     iou = intersection / union
     overlaps = iou.view(boxes2_repeat, boxes1_repeat)
 
+    # pdb.set_trace() ?????
+
+    # (Pdb) overlaps.size()
+    # torch.Size([375, 4])
+
     return overlaps
 
 
-def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
-                           config):
-    """Subsamples proposals and generates target box refinment, class_ids,
-    and masks for each.
+def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks, config):
+    """Subsample proposals and generates target box refinment, class_ids, and masks for each.
 
     Inputs:
     proposals: [batch, N, (y1, x1, y2, x2)] in normalized coordinates. Might
@@ -585,6 +614,10 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
     """
 
     # Currently only supports batchsize 1
+    # pdb.set_trace()
+    # (Pdb) proposals.size()
+    # torch.Size([1, 386, 4])
+
     proposals = proposals.squeeze(0)
     gt_class_ids = gt_class_ids.squeeze(0)
     gt_boxes = gt_boxes.squeeze(0)
@@ -608,9 +641,7 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
         crowd_iou_max = torch.max(crowd_overlaps, dim=1)[0]
         no_crowd_bool = crowd_iou_max < 0.001
     else:
-        no_crowd_bool = Variable(
-            torch.ByteTensor(proposals.size()[0] * [True]),
-            requires_grad=False)
+        no_crowd_bool = torch.ByteTensor(proposals.size(0) * [True])
         if config.GPU_COUNT:
             no_crowd_bool = no_crowd_bool.cuda()
 
@@ -627,15 +658,15 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
     # Positive ROIs
     if torch.nonzero(positive_roi_bool).size(0) > 0:
         positive_indices = torch.nonzero(positive_roi_bool)[:, 0]
-
+        # config.TRAIN_ROIS_PER_IMAGE * config.ROI_POSITIVE_RATIO == 33
         positive_count = int(
             config.TRAIN_ROIS_PER_IMAGE * config.ROI_POSITIVE_RATIO)
-        rand_idx = torch.randperm(positive_indices.size()[0])
+        rand_idx = torch.randperm(positive_indices.size(0))
         rand_idx = rand_idx[:positive_count]
         if config.GPU_COUNT:
             rand_idx = rand_idx.cuda()
         positive_indices = positive_indices[rand_idx]
-        positive_count = positive_indices.size()[0]
+        positive_count = positive_indices.size(0)
         positive_rois = proposals[positive_indices.data, :]
 
         # Assign positive ROIs to GT boxes.
@@ -645,11 +676,8 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
         roi_gt_class_ids = gt_class_ids[roi_gt_box_assignment.data]
 
         # Compute bbox refinement for positive ROIs
-        deltas = Variable(
-            utils.box_refinement(positive_rois.data, roi_gt_boxes.data),
-            requires_grad=False)
-        std_dev = Variable(
-            torch.from_numpy(config.BBOX_STD_DEV).float(), requires_grad=False)
+        deltas = utils.box_refinement(positive_rois.data, roi_gt_boxes.data)
+        std_dev = torch.Tensor(config.BBOX_STD_DEV).view(1, 4)
         if config.GPU_COUNT:
             std_dev = std_dev.cuda()
         deltas /= std_dev
@@ -671,21 +699,12 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
             y2 = (y2 - gt_y1) / gt_h
             x2 = (x2 - gt_x1) / gt_w
             boxes = torch.cat([y1, x1, y2, x2], dim=1)
-        box_ids = Variable(
-            torch.arange(roi_masks.size()[0]), requires_grad=False).int()
+        box_ids = torch.arange(roi_masks.size(0)).int()
         if config.GPU_COUNT:
             box_ids = box_ids.cuda()
-        # masks = Variable(
-        #     CropAndResizeFunction(config.MASK_SHAPE[0], config.MASK_SHAPE[1],
-        #                           0)(roi_masks.unsqueeze(1), boxes,
-        #                              box_ids).data,
-        #     requires_grad=False)
 
-        masks = Variable(
-            maskrcnn.CropFunction(config.MASK_SHAPE[0], config.MASK_SHAPE[1],
-                                  0)(roi_masks.unsqueeze(1), boxes,
-                                     box_ids).data,
-            requires_grad=False)
+        masks = maskrcnn.CropFunction(config.MASK_SHAPE[0], config.MASK_SHAPE[1],
+                                  0)(roi_masks.unsqueeze(1), boxes, box_ids).data
         masks = masks.squeeze(1)
 
         # Threshold mask pixels at 0.5 to have GT masks be 0 or 1 to use with
@@ -703,12 +722,12 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
         negative_indices = torch.nonzero(negative_roi_bool)[:, 0]
         r = 1.0 / config.ROI_POSITIVE_RATIO
         negative_count = int(r * positive_count - positive_count)
-        rand_idx = torch.randperm(negative_indices.size()[0])
+        rand_idx = torch.randperm(negative_indices.size(0))
         rand_idx = rand_idx[:negative_count]
         if config.GPU_COUNT:
             rand_idx = rand_idx.cuda()
         negative_indices = negative_indices[rand_idx]
-        negative_count = negative_indices.size()[0]
+        negative_count = negative_indices.size(0)
         negative_rois = proposals[negative_indices.data, :]
     else:
         negative_count = 0
@@ -717,19 +736,15 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
     # are not used for negative ROIs with zeros.
     if positive_count > 0 and negative_count > 0:
         rois = torch.cat((positive_rois, negative_rois), dim=0)
-        zeros = Variable(
-            torch.zeros(negative_count), requires_grad=False).int()
+        zeros = torch.zeros(negative_count).int()
         if config.GPU_COUNT:
             zeros = zeros.cuda()
         roi_gt_class_ids = torch.cat([roi_gt_class_ids, zeros], dim=0)
-        zeros = Variable(torch.zeros(negative_count, 4), requires_grad=False)
+        zeros = torch.zeros(negative_count, 4)
         if config.GPU_COUNT:
             zeros = zeros.cuda()
         deltas = torch.cat([deltas, zeros], dim=0)
-        zeros = Variable(
-            torch.zeros(negative_count, config.MASK_SHAPE[0],
-                        config.MASK_SHAPE[1]),
-            requires_grad=False)
+        zeros = torch.zeros(negative_count, config.MASK_SHAPE[0], config.MASK_SHAPE[1])
         if config.GPU_COUNT:
             zeros = zeros.cuda()
         masks = torch.cat([masks, zeros], dim=0)
@@ -737,33 +752,30 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
         rois = positive_rois
     elif negative_count > 0:
         rois = negative_rois
-        zeros = Variable(torch.zeros(negative_count), requires_grad=False)
+        zeros = torch.zeros(negative_count)
         if config.GPU_COUNT:
             zeros = zeros.cuda()
         roi_gt_class_ids = zeros
-        zeros = Variable(
-            torch.zeros(negative_count, 4), requires_grad=False).int()
+        zeros = torch.zeros(negative_count, 4).int()
         if config.GPU_COUNT:
             zeros = zeros.cuda()
         deltas = zeros
-        zeros = Variable(
-            torch.zeros(negative_count, config.MASK_SHAPE[0],
-                        config.MASK_SHAPE[1]),
-            requires_grad=False)
+        zeros = torch.zeros(negative_count, config.MASK_SHAPE[0], config.MASK_SHAPE[1])
         if config.GPU_COUNT:
             zeros = zeros.cuda()
         masks = zeros
     else:
-        rois = Variable(torch.FloatTensor(), requires_grad=False)
-        roi_gt_class_ids = Variable(torch.IntTensor(), requires_grad=False)
-        deltas = Variable(torch.FloatTensor(), requires_grad=False)
-        masks = Variable(torch.FloatTensor(), requires_grad=False)
+        rois = torch.FloatTensor()
+        roi_gt_class_ids = torch.IntTensor()
+        deltas = torch.FloatTensor()
+        masks = torch.FloatTensor()
         if config.GPU_COUNT:
             rois = rois.cuda()
             roi_gt_class_ids = roi_gt_class_ids.cuda()
             deltas = deltas.cuda()
             masks = masks.cuda()
 
+    # pdb.set_trace()
     return rois, roi_gt_class_ids, deltas, masks
 
 
@@ -771,17 +783,15 @@ def detection_target_layer(proposals, gt_class_ids, gt_boxes, gt_masks,
 #  Detection Layer
 ############################################################
 
-def clip_to_window(window, boxes):
+def clip_to_window_(boxes, window):
     """
         window: (y1, x1, y2, x2). The window in the image we want to clip to.
         boxes: [N, (y1, x1, y2, x2)]
     """
-    boxes[:, 0] = boxes[:, 0].clamp(float(window[0]), float(window[2]))
-    boxes[:, 1] = boxes[:, 1].clamp(float(window[1]), float(window[3]))
-    boxes[:, 2] = boxes[:, 2].clamp(float(window[0]), float(window[2]))
-    boxes[:, 3] = boxes[:, 3].clamp(float(window[1]), float(window[3]))
-
-    return boxes
+    boxes[:, 0].clamp_(float(window[0]), float(window[2]))
+    boxes[:, 1].clamp_(float(window[1]), float(window[3]))
+    boxes[:, 2].clamp_(float(window[0]), float(window[2]))
+    boxes[:, 3].clamp_(float(window[1]), float(window[3]))
 
 def refine_detections(rois, probs, deltas, window, config):
     """Refine classified proposals and filter overlaps and return final
@@ -815,24 +825,20 @@ def refine_detections(rois, probs, deltas, window, config):
 
     # Apply bounding box deltas
     # Shape: [boxes, (y1, x1, y2, x2)] in normalized coordinates
-    std_dev = Variable(
-        torch.from_numpy(np.reshape(config.RPN_BBOX_STD_DEV, [1, 4])).float(),
-        requires_grad=False)
+    std_dev = torch.from_numpy(np.reshape(config.RPN_BBOX_STD_DEV, [1, 4])).float()
     if config.GPU_COUNT:
         std_dev = std_dev.cuda()
     refined_rois = apply_box_deltas(rois, deltas_specific * std_dev)
 
     # Convert coordiates to image domain
     height, width = config.IMAGE_SHAPE[:2]
-    scale = Variable(
-        torch.from_numpy(np.array([height, width, height, width])).float(),
-        requires_grad=False)
+    scale = torch.from_numpy(np.array([height, width, height, width])).float()
     if config.GPU_COUNT:
         scale = scale.cuda()
     refined_rois *= scale
 
     # Clip boxes to image window
-    refined_rois = clip_to_window(window, refined_rois)
+    clip_to_window_(refined_rois, window)
 
     # Round and cast to int since we're deadling with pixels now
     refined_rois = torch.round(refined_rois)
@@ -843,9 +849,9 @@ def refine_detections(rois, probs, deltas, window, config):
     keep_bool = class_ids > 0
 
     # Filter out low confidence boxes
+    # DETECTION_MIN_CONFIDENCE = 0.7
     if config.DETECTION_MIN_CONFIDENCE:
-        keep_bool = keep_bool & (class_scores >=
-                                 config.DETECTION_MIN_CONFIDENCE)
+        keep_bool = keep_bool & (class_scores >= config.DETECTION_MIN_CONFIDENCE)
     keep = torch.nonzero(keep_bool)[:, 0]
 
     # Apply per-class NMS
@@ -853,7 +859,7 @@ def refine_detections(rois, probs, deltas, window, config):
     pre_nms_scores = class_scores[keep.data]
     pre_nms_rois = refined_rois[keep.data]
 
-    for i, class_id in enumerate(unique1d(pre_nms_class_ids)):
+    for i, class_id in enumerate(torch.unique(pre_nms_class_ids)):
         # Pick detections of this class
         ixs = torch.nonzero(pre_nms_class_ids == class_id)[:, 0]
 
@@ -873,7 +879,7 @@ def refine_detections(rois, probs, deltas, window, config):
         if i == 0:
             nms_keep = class_keep
         else:
-            nms_keep = unique1d(torch.cat((nms_keep, class_keep)))
+            nms_keep = torch.unique(torch.cat((nms_keep, class_keep)))
     keep = intersect1d(keep, nms_keep)
 
     # Keep top detections
@@ -901,18 +907,18 @@ def detection_layer(config, rois, mrcnn_class, mrcnn_bbox, image_meta):
 
     # Currently only supports batchsize 1
     # pdb.set_trace()
-    # (Pdb) p type(rois), rois.size()
-    # (<class 'torch.autograd.variable.Variable'>, torch.Size([1, 250, 4]))
-    # (Pdb) p type(mrcnn_class), mrcnn_class.size()
-    # (<class 'torch.autograd.variable.Variable'>, torch.Size([250, 81]))
-    # (Pdb) p type(mrcnn_bbox), mrcnn_bbox.size()
-    # (<class 'torch.autograd.variable.Variable'>, torch.Size([250, 81, 4]))
+    # (Pdb) p rois.size()
+    # torch.Size([1, 250, 4])
+    # (Pdb) p mrcnn_class.size()
+    # torch.Size([250, 81]))
+    # (Pdb) p mrcnn_bbox.size()
+    # torch.Size([250, 81, 4]))
     # (Pdb) p type(image_meta), image_meta.shape
     # (<class 'numpy.ndarray'>, (1, 89))
 
     rois = rois.squeeze(0)
 
-    _, _, window, _ = parse_image_meta(image_meta)
+    _, _, window = parse_image_meta(image_meta)
     window = window[0]
     detections = refine_detections(rois, mrcnn_class, mrcnn_bbox, window,
                                    config)
@@ -932,14 +938,14 @@ class RPN(nn.Module):
 
     Returns:
         rpn_logits: [batch, H, W, 2] Anchor classifier logits (before softmax)
-        rpn_probs: [batch, W, W, 2] Anchor classifier probabilities.
+        rpn_probs: [batch, H, W, 2] Anchor classifier probabilities.
         rpn_bbox: [batch, H, W, (dy, dx, log(dh), log(dw))] Deltas to be
                   applied to anchors.
     """
 
     def __init__(self, anchors_per_location, anchor_stride, depth):
         super(RPN, self).__init__()
-        self.anchors_per_location = anchors_per_location # 3 == [1/2, 1, 2]
+        # anchors_per_location = 3
         self.anchor_stride = anchor_stride # 1
         self.depth = depth # 256
 
@@ -951,6 +957,10 @@ class RPN(nn.Module):
         self.conv_bbox = nn.Conv2d(512, 4 * anchors_per_location, kernel_size=1, stride=1)
 
     def forward(self, x):
+        # pdb.set_trace()
+        # (Pdb) type(x), x.size()
+        # (<class 'torch.Tensor'>, torch.Size([1, 256, 256, 256]))
+
         # Shared convolutional base of the RPN
         x = self.relu(self.conv_shared(self.padding(x)))
 
@@ -973,6 +983,12 @@ class RPN(nn.Module):
         rpn_bbox = rpn_bbox.permute(0, 2, 3, 1)
         rpn_bbox = rpn_bbox.contiguous()
         rpn_bbox = rpn_bbox.view(x.size()[0], -1, 4)
+
+        # pdb.set_trace()
+        # (Pdb) type(rpn_class_logits), rpn_class_logits.size()
+        # (<class 'torch.Tensor'>, torch.Size([1, 196608, 2]))
+        # (Pdb) rpn_bbox.size()
+        # torch.Size([1, 196608, 4])
 
         return [rpn_class_logits, rpn_probs, rpn_bbox]
 
@@ -998,19 +1014,34 @@ class Classifier(nn.Module):
 
         self.linear_bbox = nn.Linear(1024, num_classes * 4)
 
-    def forward(self, x, rois):
-        # print("Classifier RoI Align:")
+        # pdb.set_trace()
+        # (Pdb) a
+        # self = Classifier(
+        #   (conv1): Conv2d(256, 1024, kernel_size=(7, 7), stride=(1, 1))
+        #   (bn1): BatchNorm2d(1024, eps=0.001, momentum=0.01, affine=True, track_running_stats=True)
+        #   (conv2): Conv2d(1024, 1024, kernel_size=(1, 1), stride=(1, 1))
+        #   (bn2): BatchNorm2d(1024, eps=0.001, momentum=0.01, affine=True, track_running_stats=True)
+        #   (relu): ReLU(inplace), xxxx9999 !!!
+        #   (linear_class): Linear(in_features=1024, out_features=81, bias=True)
+        #   (softmax): Softmax()
+        #   (linear_bbox): Linear(in_features=1024, out_features=324, bias=True)
+        # )
+        # depth = 256
+        # pool_size = 7
+        # image_shape = array([1024, 1024,    3])
+        # num_classes = 81
 
+    def forward(self, x, rois):
         # (Pdb) p type(x), len(x), x[0].size(), x[1].size(), x[2].size(), x[3].size()
-        # (<class 'list'>, 4, torch.Size([1, 256, 256, 256]), torch.Size([1, 256, 128, 128]), 
+        # (<class 'list'>, 4, torch.Size([1, 256, 256, 256]), torch.Size([1, 256, 128, 128]),
         # torch.Size([1, 256, 64, 64]), torch.Size([1, 256, 32, 32]))
 
         # (Pdb) p rois
-        # ( 0 ,.,.) = 
+        # ( 0 ,.,.) =
         #   0.4157  0.3690  0.5200  0.4814
         #   0.4312  0.3839  0.5355  0.5006
         #   0.4411  0.3984  0.5488  0.5063
-        #                ⋮                
+        #                ⋮
         #   0.3398  0.3097  0.5855  0.5250
         #   0.6279  0.6666  0.6364  0.6771
         #   0.6220  0.9668  0.6400  0.9874
@@ -1019,7 +1050,7 @@ class Classifier(nn.Module):
         # y = [rois] + x
         # (Pdb) p type(y), len(y), y[0].size(), y[1].size(), y[2].size(), y[3].size(), y[4].size()
         # (<class 'list'>, 5, torch.Size([1, 250, 4])
-        # torch.Size([1, 256, 256, 256]), 
+        # torch.Size([1, 256, 256, 256]),
         # torch.Size([1, 256, 128, 128]), torch.Size([1, 256, 64, 64]), torch.Size([1, 256, 32, 32]))
 
         x = pyramid_roi_align([rois] + x, self.pool_size, self.image_shape)
@@ -1062,7 +1093,18 @@ class Mask(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x, rois):
-        # print("Mask RoI Align:")
+        # pdb.set_trace()
+
+        # (Pdb) type(x), len(x), x[0].size(), x[1].size(), x[2].size(), x[3].size()
+        # (<class 'list'>, 4, torch.Size([1, 256, 256, 256]), torch.Size([1, 256, 128, 128]),
+        # torch.Size([1, 256, 64, 64]), torch.Size([1, 256, 32, 32]))
+
+        # (Pdb) rois.size()
+        # torch.Size([1, 2, 4])
+
+        # ---- MASK_POOL_SIZE = 14 ------ !!!
+        # (Pdb) self.pool_size, self.image_shape
+        # (14, array([1024, 1024,    3]))
 
         x = pyramid_roi_align([rois] + x, self.pool_size, self.image_shape)
         x = self.conv1(self.padding(x))
@@ -1082,6 +1124,10 @@ class Mask(nn.Module):
         x = self.conv5(x)
         x = self.sigmoid(x)
 
+        # pdb.set_trace()
+        # (Pdb) x.size()
+        # torch.Size([2, 81, 28, 28])
+
         return x
 
 
@@ -1097,18 +1143,29 @@ def compute_rpn_class_loss(rpn_match, rpn_class_logits):
     """
 
     # Squeeze last dim to simplify
+    # pdb.set_trace()
+    # (Pdb) rpn_match.size()
+    # torch.Size([1, 261888, 1])
+    # (Pdb) rpn_class_logits.size()
+    # torch.Size([1, 261888, 2])
+
     rpn_match = rpn_match.squeeze(2)
 
     # Get anchor classes. Convert the -1/+1 match to 0/1 values.
     anchor_class = (rpn_match == 1).long()
+    # (Pdb) rpn_match.size()
+    # torch.Size([1, 261888])
+    # (Pdb) anchor_class
+    # tensor([[0, 0, 0,  ..., 0, 0, 0]], device='cuda:0')
+    # (Pdb) anchor_class.size()
+    # torch.Size([1, 261888])
 
     # Positive and Negative anchors contribute to the loss,
     # but neutral anchors (match value = 0) don't.
     indices = torch.nonzero(rpn_match != 0)
 
     # Pick rows that contribute to the loss and filter out the rest.
-    rpn_class_logits = rpn_class_logits[indices.data[:, 0], indices.data[:,
-                                                                         1], :]
+    rpn_class_logits = rpn_class_logits[indices.data[:, 0], indices.data[:, 1], :]
     anchor_class = anchor_class[indices.data[:, 0], indices.data[:, 1]]
 
     # Crossentropy loss
@@ -1128,6 +1185,10 @@ def compute_rpn_bbox_loss(target_bbox, rpn_match, rpn_bbox):
     """
 
     # Squeeze last dim to simplify
+    # pdb.set_trace()
+    # (Pdb) p target_bbox.size(), rpn_match.size(), rpn_bbox.size()
+    # (torch.Size([1, 128, 4]), torch.Size([1, 261888, 1]), torch.Size([1, 261888, 4]))
+
     rpn_match = rpn_match.squeeze(2)
 
     # Positive anchors contribute to the loss, but negative and
@@ -1138,7 +1199,7 @@ def compute_rpn_bbox_loss(target_bbox, rpn_match, rpn_bbox):
     rpn_bbox = rpn_bbox[indices.data[:, 0], indices.data[:, 1]]
 
     # Trim target bounding box deltas to the same length as rpn_bbox.
-    target_bbox = target_bbox[0, :rpn_bbox.size()[0], :]
+    target_bbox = target_bbox[0, :rpn_bbox.size(0), :]
 
     # Smooth L1 loss
     loss = F.smooth_l1_loss(rpn_bbox, target_bbox)
@@ -1155,10 +1216,14 @@ def compute_mrcnn_class_loss(target_class_ids, pred_class_logits):
     """
 
     # Loss
+    # pdb.set_trace()
+    # (Pdb) p target_class_ids.size(), pred_class_logits.size()
+    # (torch.Size([100]), torch.Size([100, 81]))
+
     if target_class_ids.size():
         loss = F.cross_entropy(pred_class_logits, target_class_ids.long())
     else:
-        loss = Variable(torch.FloatTensor([0]), requires_grad=False)
+        loss = torch.FloatTensor([0])
         if target_class_ids.is_cuda:
             loss = loss.cuda()
 
@@ -1172,6 +1237,9 @@ def compute_mrcnn_bbox_loss(target_bbox, target_class_ids, pred_bbox):
     target_class_ids: [batch, num_rois]. Integer class IDs.
     pred_bbox: [batch, num_rois, num_classes, (dy, dx, log(dh), log(dw))]
     """
+    # pdb.set_trace()
+    # (Pdb) p target_bbox.size(), target_class_ids.size(), pred_bbox.size()
+    # (torch.Size([100, 4]), torch.Size([100]), torch.Size([100, 81, 4]))
 
     # BugFixed: target_class_ids.size():
     if target_class_ids.size(0) > 0:
@@ -1188,7 +1256,7 @@ def compute_mrcnn_bbox_loss(target_bbox, target_class_ids, pred_bbox):
         # Smooth L1 loss
         loss = F.smooth_l1_loss(pred_bbox, target_bbox)
     else:
-        loss = Variable(torch.FloatTensor([0]), requires_grad=False)
+        loss = torch.FloatTensor([0])
         if target_class_ids.is_cuda:
             loss = loss.cuda()
 
@@ -1205,6 +1273,10 @@ def compute_mrcnn_mask_loss(target_masks, target_class_ids, pred_masks):
                 with values from 0 to 1.
     """
     # BugFixed: if target_class_ids.size():
+    # pdb.set_trace()
+    # (Pdb) p target_masks.size(), target_class_ids.size(), pred_masks.size()
+    # (torch.Size([100, 28, 28]), torch.Size([100]), torch.Size([100, 81, 28, 28]))
+
     if target_class_ids.size(0) > 0:
         # Only positive ROIs contribute to the loss. And only
         # the class specific mask of each ROI.
@@ -1219,7 +1291,7 @@ def compute_mrcnn_mask_loss(target_masks, target_class_ids, pred_masks):
         # Binary cross entropy
         loss = F.binary_cross_entropy(y_pred, y_true)
     else:
-        loss = Variable(torch.FloatTensor([0]), requires_grad=False)
+        loss = torch.FloatTensor([0])
         if target_class_ids.is_cuda:
             loss = loss.cuda()
 
@@ -1294,20 +1366,12 @@ def load_image_gt(dataset,
     # bbox: [num_instances, (y1, x1, y2, x2)]
     bbox = utils.extract_bboxes(mask)
 
-    # Active classes
-    # Different datasets have different classes, so track the
-    # classes supported in the dataset of this image.
-    active_class_ids = np.zeros([dataset.num_classes], dtype=np.int32)
-    source_class_ids = dataset.source_class_ids[dataset.image_info[image_id][
-        "source"]]
-    active_class_ids[source_class_ids] = 1
-
     # Resize masks to smaller size to reduce memory usage
     if use_mini_mask:
         mask = utils.minimize_mask(bbox, mask, config.MINI_MASK_SHAPE)
 
     # Image meta data
-    image_meta = compose_image_meta(image_id, shape, window, active_class_ids)
+    image_meta = compose_image_meta(image_id, shape, window)
 
     return image, image_meta, class_ids, bbox, mask
 
@@ -1326,7 +1390,7 @@ def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
     rpn_bbox: [N, (dy, dx, log(dh), log(dw))] Anchor bbox deltas.
     """
 
-    # pdb.set_trace() ==> 
+    # pdb.set_trace() ==>
     # image_shape = (1024, 1024, 3)
     # anchors = array([[ -22.627417  ,  -11.3137085 ,   22.627417  ,   11.3137085 ],
     #        [ -16.        ,  -16.        ,   16.        ,   16.        ],
@@ -1350,6 +1414,9 @@ def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
 
     # RPN Match: 1 = positive anchor, -1 = negative anchor, 0 = neutral
     rpn_match = np.zeros([anchors.shape[0]], dtype=np.int32)
+    # (Pdb) rpn_match.shape
+    # (261888,)
+
     # RPN bounding boxes: [max anchors per image, (dy, dx, log(dh), log(dw))]
     rpn_bbox = np.zeros((config.RPN_TRAIN_ANCHORS_PER_IMAGE, 4))
     # config.RPN_TRAIN_ANCHORS_PER_IMAGE = 128
@@ -1388,15 +1455,18 @@ def build_rpn_targets(image_shape, anchors, gt_class_ids, gt_boxes, config):
     # However, don't keep any GT box unmatched (rare, but happens). Instead,
     # match it to the closest anchor (even if its max IoU is < 0.3).
     #
+
     # 1. Set negative anchors first. They get overwritten below if a GT box is
     # matched to them. Skip boxes in crowd areas.
     anchor_iou_argmax = np.argmax(overlaps, axis=1)
     anchor_iou_max = overlaps[np.arange(overlaps.shape[0]), anchor_iou_argmax]
     rpn_match[(anchor_iou_max < 0.3) & (no_crowd_bool)] = -1
+
     # 2. Set an anchor for each GT box (regardless of IoU value).
     # TODO: If multiple anchors have the same IoU match all of them
     gt_iou_argmax = np.argmax(overlaps, axis=0)
     rpn_match[gt_iou_argmax] = 1
+
     # 3. Set anchors with high overlap as positive.
     rpn_match[anchor_iou_max >= 0.7] = 1
 
@@ -1492,6 +1562,14 @@ class Dataset(torch.utils.data.Dataset):
 
         # Anchors
         # [anchor_count, (y1, x1, y2, x2)]
+
+        # p BACKBONE_SHAPES
+        # array([[256, 256],
+        #        [128, 128],
+        #        [ 64,  64],
+        #        [ 32,  32],
+        #        [ 16,  16]])
+
         self.anchors = utils.generate_pyramid_anchors(
             config.RPN_ANCHOR_SCALES, config.RPN_ANCHOR_RATIOS,
             config.BACKBONE_SHAPES, config.BACKBONE_STRIDES,
@@ -1500,9 +1578,47 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, image_index):
         # Get GT bounding boxes and masks for image.
         image_id = self.image_ids[image_index]
+        #  (Pdb) image_id
+        # 10408
+
         image, image_metas, gt_class_ids, gt_boxes, gt_masks = \
             load_image_gt(self.dataset, self.config, image_id, augment=self.augment,
                           use_mini_mask=self.config.USE_MINI_MASK)
+        # pdb.set_trace()
+        # (Pdb) image.shape
+        # (1024, 1024, 3)
+        # (Pdb) image_metas
+        # array([10408,   480,   640,     3,   128,     0,   896,  1024,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #            1,     1,     1,     1,     1,     1,     1,     1])
+        # (Pdb) gt_class_ids
+        # array([16, 64, 65, 67], dtype=int32)
+        # (Pdb) image_metas.shape
+        # (89,)
+        # (Pdb) image_metas
+        # tensor([10408,   480,   640,     3,   128,     0,   896,  1024,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1,     1,
+        #             1,     1,     1,     1,     1,     1,     1,     1,     1])
+        # (Pdb) gt_boxes
+        # array([[ 299,    0,  672,  571],
+        #        [ 152,  474,  723, 1024],
+        #        [ 752,  197,  895,  478],
+        #        [ 693,  531,  882, 1023]], dtype=int32)
+        # (Pdb) gt_masks.shape
+        # (56, 56, 4)
 
         # Skip images that have no instances. This can happen in cases
         # where we train on a subset of classes and the image doesn't
@@ -1528,6 +1644,12 @@ class Dataset(torch.utils.data.Dataset):
         rpn_match = rpn_match[:, np.newaxis]
         images = mold_image(image.astype(np.float32), self.config)
 
+        # pdb.set_trace()
+        # (Pdb) images.shape
+        # (1024, 1024, 3)
+        # (Pdb) gt_masks.shape
+        # (56, 56, 4)
+
         # Convert
         images = torch.from_numpy(images.transpose(2, 0, 1)).float()
         image_metas = torch.from_numpy(image_metas)
@@ -1535,8 +1657,13 @@ class Dataset(torch.utils.data.Dataset):
         rpn_bbox = torch.from_numpy(rpn_bbox).float()
         gt_class_ids = torch.from_numpy(gt_class_ids)
         gt_boxes = torch.from_numpy(gt_boxes).float()
-        gt_masks = torch.from_numpy(gt_masks.astype(int).transpose(2, 0,
-                                                                   1)).float()
+        gt_masks = torch.from_numpy(gt_masks.astype(int).transpose(2, 0, 1)).float()
+
+        # pdb.set_trace()
+        # (Pdb) images.shape
+        # torch.Size([3, 1024, 1024])
+        # (Pdb) gt_masks.shape
+        # torch.Size([4, 56, 56])
 
         return images, image_metas, rpn_match, rpn_bbox, gt_class_ids, gt_boxes, gt_masks
 
@@ -1592,18 +1719,17 @@ class MaskRCNN(nn.Module):
         # print("fpn: ", self.fpn)
 
         # Generate Anchors
-        self.anchors = Variable(
-            torch.from_numpy(
-                utils.generate_pyramid_anchors(
-                    config.RPN_ANCHOR_SCALES, config.RPN_ANCHOR_RATIOS,
-                    config.BACKBONE_SHAPES, config.BACKBONE_STRIDES,
-                    config.RPN_ANCHOR_STRIDE)).float(),
-            requires_grad=False)
+        self.anchors = torch.from_numpy(
+            utils.generate_pyramid_anchors(
+                config.RPN_ANCHOR_SCALES, config.RPN_ANCHOR_RATIOS,
+                config.BACKBONE_SHAPES, config.BACKBONE_STRIDES,
+                config.RPN_ANCHOR_STRIDE)).float()
         # print("anchors: ", self.anchors)
         if self.config.GPU_COUNT:
             self.anchors = self.anchors.cuda()
 
         # RPN
+        # RPN_ANCHOR_RATIOS = [0.5, 1, 2], RPN_ANCHOR_STRIDE = 1
         self.rpn = RPN(
             len(config.RPN_ANCHOR_RATIOS), config.RPN_ANCHOR_STRIDE, 256)
         # print("RPN: ", self.rpn)
@@ -1626,6 +1752,10 @@ class MaskRCNN(nn.Module):
                     p.requires_grad = False
 
         self.apply(set_bn_fix)
+        # pdb.set_trace()
+        # (Pdb) self.anchors.size()
+        # torch.Size([261888, 4])
+
 
     def initialize_weights(self):
         """Initialize model weights.
@@ -1683,8 +1813,7 @@ class MaskRCNN(nn.Module):
 
         # Directory for training logs
         self.log_dir = os.path.join(
-            self.model_dir, "{}{:%Y%m%dT%H%M}".format(self.config.NAME.lower(),
-                                                      now))
+            self.model_dir, "{}{:%Y%m%dT%H%M}".format(self.config.NAME.lower(), now))
 
         # Path to save after each epoch. Include placeholders that get filled by Keras.
         self.checkpoint_path = os.path.join(
@@ -1692,31 +1821,6 @@ class MaskRCNN(nn.Module):
             "mask_rcnn_{}_*epoch*.pth".format(self.config.NAME.lower()))
         self.checkpoint_path = self.checkpoint_path.replace(
             "*epoch*", "{:04d}")
-
-    def find_last(self):
-        """Finds the last checkpoint file of the last trained model in the
-        model directory.
-        Returns:
-            log_dir: The directory where events and weights are saved
-            checkpoint_path: the path to the last checkpoint file
-        """
-        # Get directory names. Each directory corresponds to a model
-        dir_names = next(os.walk(self.model_dir))[1]
-        key = self.config.NAME.lower()
-        dir_names = filter(lambda f: f.startswith(key), dir_names)
-        dir_names = sorted(dir_names)
-        if not dir_names:
-            return None, None
-        # Pick last directory
-        dir_name = os.path.join(self.model_dir, dir_names[-1])
-        # Find the last checkpoint
-        checkpoints = next(os.walk(dir_name))[2]
-        checkpoints = filter(lambda f: f.startswith("mask_rcnn"), checkpoints)
-        checkpoints = sorted(checkpoints)
-        if not checkpoints:
-            return dir_name, None
-        checkpoint = os.path.join(dir_name, checkpoints[-1])
-        return dir_name, checkpoint
 
     def load_weights(self, filepath):
         """Modified version of the correspoding Keras function with
@@ -1730,10 +1834,6 @@ class MaskRCNN(nn.Module):
         else:
             print("Weight file not found ...")
 
-        # Update the log directory
-        self.set_log_dir(filepath)
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
 
     def detect(self, images):
         """Runs the detection pipeline.
@@ -1751,6 +1851,9 @@ class MaskRCNN(nn.Module):
         molded_images, image_metas, windows = self.mold_inputs(images)
 
         # pdb.set_trace()
+        # (Pdb) molded_images[0].shape
+        # torch.Size([3, 1024, 1024])
+
         # (Pdb) p type(images), len(images), type(images[0]), images[0].shape
         # (<class 'list'>, 1, <class 'numpy.ndarray'>, (426, 640, 3))
         # (Pdb) p type(molded_images), molded_images.shape
@@ -1765,12 +1868,11 @@ class MaskRCNN(nn.Module):
         # Convert images to torch tensor
         molded_images = torch.from_numpy(molded_images.transpose(0, 3, 1, 2)).float()
 
+        # pdb.set_trace()
+
         # To GPU
         if self.config.GPU_COUNT:
             molded_images = molded_images.cuda()
-
-        # Wrap in variable
-        # molded_images = Variable(molded_images, volatile=True)
 
         # Run object detection
         detections, mrcnn_mask = self.predict([molded_images, image_metas], mode='inference')
@@ -1802,11 +1904,19 @@ class MaskRCNN(nn.Module):
         # (Pdb) print(results[0].keys())
         # dict_keys(['rois', 'class_ids', 'scores', 'masks'])
 
+        # pdb.set_trace()
+
         return results
 
     def predict(self, input, mode):
         molded_images = input[0]
         image_metas = input[1]
+
+        # pdb.set_trace()
+        # (Pdb) input[0].shape
+        # torch.Size([1, 3, 1024, 1024])
+        # (Pdb) input[1].shape
+        # (1, 89)
 
         if mode == 'inference':
             self.eval()
@@ -1878,8 +1988,22 @@ class MaskRCNN(nn.Module):
         if mode == 'inference':
             # Network Heads
             # Proposal classifier and BBox regressor heads
+
+            # pdb.set_trace()
+            # (Pdb) len(mrcnn_feature_maps)
+            # 4
+            # (Pdb) mrcnn_feature_maps[0].shape
+            # torch.Size([1, 256, 256, 256])
+            # (Pdb) mrcnn_feature_maps[1].shape
+            # torch.Size([1, 256, 128, 128])
+            # (Pdb) mrcnn_feature_maps[2].shape
+            # torch.Size([1, 256, 64, 64])
+            # (Pdb) mrcnn_feature_maps[3].shape
+            # torch.Size([1, 256, 32, 32])
+
             mrcnn_class_logits, mrcnn_class, mrcnn_bbox = self.classifier(
                 mrcnn_feature_maps, rpn_rois)
+
 
             # Detections
             # output is [batch, num_detections, (y1, x1, y2, x2, class_id, score)] in image coordinates
@@ -1890,9 +2014,7 @@ class MaskRCNN(nn.Module):
             # TODO: let DetectionLayer return normalized coordinates to avoid
             #       unnecessary conversions
             h, w = self.config.IMAGE_SHAPE[:2]
-            scale = Variable(
-                torch.from_numpy(np.array([h, w, h, w])).float(),
-                requires_grad=False)
+            scale = torch.from_numpy(np.array([h, w, h, w])).float()
             if self.config.GPU_COUNT:
                 scale = scale.cuda()
             detection_boxes = detections[:, :4] / scale
@@ -1917,9 +2039,8 @@ class MaskRCNN(nn.Module):
 
             # Normalize coordinates
             h, w = self.config.IMAGE_SHAPE[:2]
-            scale = Variable(
-                torch.from_numpy(np.array([h, w, h, w])).float(),
-                requires_grad=False)
+            scale = torch.from_numpy(np.array([h, w, h, w])).float()
+
             if self.config.GPU_COUNT:
                 scale = scale.cuda()
             gt_boxes = gt_boxes / scale
@@ -1932,10 +2053,10 @@ class MaskRCNN(nn.Module):
                 detection_target_layer(rpn_rois, gt_class_ids, gt_boxes, gt_masks, self.config)
 
             if not rois.size():
-                mrcnn_class_logits = Variable(torch.FloatTensor())
-                mrcnn_class = Variable(torch.IntTensor())
-                mrcnn_bbox = Variable(torch.FloatTensor())
-                mrcnn_mask = Variable(torch.FloatTensor())
+                mrcnn_class_logits = torch.FloatTensor()
+                mrcnn_class = torch.IntTensor()
+                mrcnn_bbox = torch.FloatTensor()
+                mrcnn_mask = torch.FloatTensor()
                 if self.config.GPU_COUNT:
                     mrcnn_class_logits = mrcnn_class_logits.cuda()
                     mrcnn_class = mrcnn_class.cuda()
@@ -2025,6 +2146,7 @@ class MaskRCNN(nn.Module):
             lr=learning_rate,
             momentum=self.config.LEARNING_MOMENTUM)
 
+        import os
         for epoch in range(self.epoch + 1, epochs + 1):
             log("Epoch {}/{}.".format(epoch, epochs))
 
@@ -2082,14 +2204,6 @@ class MaskRCNN(nn.Module):
             # image_metas as numpy array
             image_metas = image_metas.numpy()
 
-            # Wrap in variables
-            images = Variable(images)
-            rpn_match = Variable(rpn_match)
-            rpn_bbox = Variable(rpn_bbox)
-            gt_class_ids = Variable(gt_class_ids)
-            gt_boxes = Variable(gt_boxes)
-            gt_masks = Variable(gt_masks)
-
             # To GPU
             if self.config.GPU_COUNT:
                 images = images.cuda()
@@ -2111,56 +2225,32 @@ class MaskRCNN(nn.Module):
 
             # Backpropagation
             loss.backward()
-            torch.nn.utils.clip_grad_norm(self.parameters(), 5.0)
+            torch.nn.utils.clip_grad_norm_(self.parameters(), 5.0)
             if (batch_count % self.config.BATCH_SIZE) == 0:
                 optimizer.step()
                 optimizer.zero_grad()
                 batch_count = 0
 
-            # Progress
-            # printProgressBar(
-            #     step + 1,
-            #     steps,
-            #     prefix="\t{}/{}".format(step + 1, steps),
-            #     suffix=
-            #     "Complete - loss: {:.5f} - rpn_class_loss: {:.5f} - rpn_bbox_loss: {:.5f} - mrcnn_class_loss: {:.5f} - mrcnn_bbox_loss: {:.5f} - mrcnn_mask_loss: {:.5f}".
-            #     format(loss.data.cpu()[0],
-            #            rpn_class_loss.data.cpu()[0],
-            #            rpn_bbox_loss.data.cpu()[0],
-            #            mrcnn_class_loss.data.cpu()[0],
-            #            mrcnn_bbox_loss.data.cpu()[0],
-            #            mrcnn_mask_loss.data.cpu()[0]),
-            #     length=10)
-            # Fix warning
-            printProgressBar(
+            progress(
                 step + 1,
                 steps,
                 prefix="\t{}/{}".format(step + 1, steps),
-                suffix=
-                "Complete - loss: {:.5f} - rpn_class_loss: {:.5f} - rpn_bbox_loss: {:.5f} - mrcnn_class_loss: {:.5f} - mrcnn_bbox_loss: {:.5f} - mrcnn_mask_loss: {:.5f}".
-                format(loss.data.cpu().item(),
-                       rpn_class_loss.data.cpu().item(),
-                       rpn_bbox_loss.data.cpu().item(),
-                       mrcnn_class_loss.data.cpu().item(),
-                       mrcnn_bbox_loss.data.cpu().item(),
-                       mrcnn_mask_loss.data.cpu().item()),
+                suffix="Complete - loss: {:.5f} - rpn_class_loss: {:.5f} - rpn_bbox_loss: {:.5f} - mrcnn_class_loss: {:.5f} - mrcnn_bbox_loss: {:.5f} - mrcnn_mask_loss: {:.5f}".
+                format(loss.item(),
+                       rpn_class_loss.item(),
+                       rpn_bbox_loss.item(),
+                       mrcnn_class_loss.item(),
+                       mrcnn_bbox_loss.item(),
+                       mrcnn_mask_loss.item()),
                 length=10)
 
-
             # Statistics
-            # loss_sum += loss.data.cpu()[0] / steps
-            # loss_rpn_class_sum += rpn_class_loss.data.cpu()[0] / steps
-            # loss_rpn_bbox_sum += rpn_bbox_loss.data.cpu()[0] / steps
-            # loss_mrcnn_class_sum += mrcnn_class_loss.data.cpu()[0] / steps
-            # loss_mrcnn_bbox_sum += mrcnn_bbox_loss.data.cpu()[0] / steps
-            # loss_mrcnn_mask_sum += mrcnn_mask_loss.data.cpu()[0] / steps
-            # Fix Warning:
-            loss_sum += loss.data.cpu().item() / steps
-            loss_rpn_class_sum += rpn_class_loss.data.cpu().item() / steps
-            loss_rpn_bbox_sum += rpn_bbox_loss.data.cpu().item() / steps
-            loss_mrcnn_class_sum += mrcnn_class_loss.data.cpu().item() / steps
-            loss_mrcnn_bbox_sum += mrcnn_bbox_loss.data.cpu().item() / steps
-            loss_mrcnn_mask_sum += mrcnn_mask_loss.data.cpu().item() / steps
+            loss_sum += loss.item() / steps
+            loss_rpn_class_sum += rpn_class_loss.item() / steps
+            loss_rpn_bbox_sum += rpn_bbox_loss.item() / steps
+            loss_mrcnn_class_sum += mrcnn_class_loss.item() / steps
+            loss_mrcnn_bbox_sum += mrcnn_bbox_loss.item() / steps
+            loss_mrcnn_mask_sum += mrcnn_mask_loss.item() / steps
 
             # Break after 'steps' steps
             if step == steps - 1:
@@ -2191,14 +2281,6 @@ class MaskRCNN(nn.Module):
             # image_metas as numpy array
             image_metas = image_metas.numpy()
 
-            # Wrap in variables
-            images = Variable(images, volatile=True)
-            rpn_match = Variable(rpn_match, volatile=True)
-            rpn_bbox = Variable(rpn_bbox, volatile=True)
-            gt_class_ids = Variable(gt_class_ids, volatile=True)
-            gt_boxes = Variable(gt_boxes, volatile=True)
-            gt_masks = Variable(gt_masks, volatile=True)
-
             # To GPU
             if self.config.GPU_COUNT:
                 images = images.cuda()
@@ -2221,30 +2303,24 @@ class MaskRCNN(nn.Module):
                 mrcnn_class_logits, target_deltas, mrcnn_bbox, target_mask, mrcnn_mask)
             loss = rpn_class_loss + rpn_bbox_loss + mrcnn_class_loss + mrcnn_bbox_loss + mrcnn_mask_loss
 
-            # Progress
-            printProgressBar(
+            progress(
                 step + 1,
                 steps,
                 prefix="\t{}/{}".format(step + 1, steps),
-                suffix=
-                "Complete - loss: {:.5f} - rpn_class_loss: {:.5f} - rpn_bbox_loss: {:.5f} - mrcnn_class_loss: {:.5f} - mrcnn_bbox_loss: {:.5f} - mrcnn_mask_loss: {:.5f}".
-                format(loss.data.cpu()[0],
-                       rpn_class_loss.data.cpu()[0],
-                       rpn_bbox_loss.data.cpu()[0],
-                       mrcnn_class_loss.data.cpu()[0],
-                       mrcnn_bbox_loss.data.cpu()[0],
-                       mrcnn_mask_loss.data.cpu()[0]),
+                suffix="Complete - loss: {:.5f} - rpn_class_loss: {:.5f} - rpn_bbox_loss: {:.5f} - mrcnn_class_loss: {:.5f} - mrcnn_bbox_loss: {:.5f} - mrcnn_mask_loss: {:.5f}"
+                .format(loss.item(), rpn_class_loss.item(),
+                        rpn_bbox_loss.item(), mrcnn_class_loss.item(),
+                        mrcnn_bbox_loss.item(), mrcnn_mask_loss.item()),
                 length=10)
 
             # Statistics
-            loss_sum += loss.data.cpu()[0] / steps
-            loss_rpn_class_sum += rpn_class_loss.data.cpu()[0] / steps
-            loss_rpn_bbox_sum += rpn_bbox_loss.data.cpu()[0] / steps
-            loss_mrcnn_class_sum += mrcnn_class_loss.data.cpu()[0] / steps
-            loss_mrcnn_bbox_sum += mrcnn_bbox_loss.data.cpu()[0] / steps
-            loss_mrcnn_mask_sum += mrcnn_mask_loss.data.cpu()[0] / steps
+            loss_sum += loss.item() / steps
+            loss_rpn_class_sum += rpn_class_loss.item() / steps
+            loss_rpn_bbox_sum += rpn_bbox_loss.item() / steps
+            loss_mrcnn_class_sum += mrcnn_class_loss.item() / steps
+            loss_mrcnn_bbox_sum += mrcnn_bbox_loss.item() / steps
+            loss_mrcnn_mask_sum += mrcnn_mask_loss.item() / steps
 
-            # Break after 'steps' steps
             if step == steps - 1:
                 break
             step += 1
@@ -2276,9 +2352,7 @@ class MaskRCNN(nn.Module):
                 padding=self.config.IMAGE_PADDING)
             molded_image = mold_image(molded_image, self.config)
             # Build image_meta
-            image_meta = compose_image_meta(
-                0, image.shape, window,
-                np.zeros([self.config.NUM_CLASSES], dtype=np.int32))
+            image_meta = compose_image_meta(0, image.shape, window)
             # Append
             molded_images.append(molded_image)
             windows.append(window)
@@ -2356,7 +2430,7 @@ class MaskRCNN(nn.Module):
 ############################################################
 
 
-def compose_image_meta(image_id, image_shape, window, active_class_ids):
+def compose_image_meta(image_id, image_shape, window):
     """Takes attributes of an image and puts them in one 1D array. Use
     parse_image_meta() to parse the values back.
 
@@ -2364,15 +2438,11 @@ def compose_image_meta(image_id, image_shape, window, active_class_ids):
     image_shape: [height, width, channels]
     window: (y1, x1, y2, x2) in pixels. The area of the image where the real
             image is (excluding the padding)
-    active_class_ids: List of class_ids available in the dataset from which
-        the image came. Useful if training on images from multiple datasets
-        where not all classes are present in all datasets.
-    """
+   """
     meta = np.array(
         [image_id] +  # size=1
         list(image_shape) +  # size=3
-        list(window) +  # size=4 (y1, x1, y2, x2) in image cooredinates
-        list(active_class_ids)  # size=num_classes
+        list(window)  # size=4 (y1, x1, y2, x2) in image cooredinates
     )
     return meta
 
@@ -2385,8 +2455,7 @@ def parse_image_meta(meta):
     image_id = meta[:, 0]
     image_shape = meta[:, 1:4]
     window = meta[:, 4:8]  # (y1, x1, y2, x2) window of image in in pixels
-    active_class_ids = meta[:, 8:]
-    return image_id, image_shape, window, active_class_ids
+    return image_id, image_shape, window
 
 
 
@@ -2396,4 +2465,3 @@ def mold_image(images, config):
     colors in RGB order.
     """
     return images.astype(np.float32) - config.MEAN_PIXEL
-

@@ -372,6 +372,20 @@ def minimize_mask(bbox, mask, mini_shape):
 
     See inspect_data.ipynb notebook for more details.
     """
+    # (Pdb) type(bbox), type(mask)
+    # (<class 'numpy.ndarray'>, <class 'numpy.ndarray'>)
+    # (Pdb) mask.shape
+    # (56, 56, 3)
+    # (Pdb) bbox.shape
+    # (3, 4)
+
+    # (Pdb) bbox.shape
+    # (3, 4)
+    # (Pdb) mask.shape
+    # (1024, 1024, 3)
+    # (Pdb) mini_shape
+    # (56, 56)
+
     mini_mask = np.zeros(mini_shape + (mask.shape[-1],), dtype=bool)
     for i in range(mask.shape[-1]):
         m = mask[:, :, i]
@@ -381,24 +395,25 @@ def minimize_mask(bbox, mask, mini_shape):
             raise Exception("Invalid bounding box with area of zero")
         m = scipy.misc.imresize(m.astype(float), mini_shape, interp='bilinear')
         mini_mask[:, :, i] = np.where(m >= 128, 1, 0)
+
     return mini_mask
 
 
-def expand_mask(bbox, mini_mask, image_shape):
-    """Resizes mini masks back to image size. Reverses the change
-    of minimize_mask().  xxxx3333
+# def expand_mask(bbox, mini_mask, image_shape):
+#     """Resizes mini masks back to image size. Reverses the change
+#     of minimize_mask().  xxxx3333
 
-    See inspect_data.ipynb notebook for more details.
-    """
-    mask = np.zeros(image_shape[:2] + (mini_mask.shape[-1],), dtype=bool)
-    for i in range(mask.shape[-1]):
-        m = mini_mask[:, :, i]
-        y1, x1, y2, x2 = bbox[i][:4]
-        h = y2 - y1
-        w = x2 - x1
-        m = scipy.misc.imresize(m.astype(float), (h, w), interp='bilinear')
-        mask[y1:y2, x1:x2, i] = np.where(m >= 128, 1, 0)
-    return mask
+#     See inspect_data.ipynb notebook for more details.
+#     """
+#     mask = np.zeros(image_shape[:2] + (mini_mask.shape[-1],), dtype=bool)
+#     for i in range(mask.shape[-1]):
+#         m = mini_mask[:, :, i]
+#         y1, x1, y2, x2 = bbox[i][:4]
+#         h = y2 - y1
+#         w = x2 - x1
+#         m = scipy.misc.imresize(m.astype(float), (h, w), interp='bilinear')
+#         mask[y1:y2, x1:x2, i] = np.where(m >= 128, 1, 0)
+#     return mask
 
 
 def unmold_mask(mask, bbox, image_shape):
@@ -436,13 +451,30 @@ def generate_anchors(scales, ratios, shape, feature_stride, anchor_stride):
         value is 2 then generate anchors for every other feature map pixel.
     """
     # Get all combinations of scales and ratios
+
+    # pdb.set_trace()
+    # (Pdb) a
+    # scales = 32
+    # ratios = [0.5, 1, 2]
+    # shape = array([256, 256])
+    # feature_stride = 4
+    # anchor_stride = 1
+
     scales, ratios = np.meshgrid(np.array(scales), np.array(ratios))
     scales = scales.flatten()
     ratios = ratios.flatten()
+    # (Pdb) scales
+    # array([32, 32, 32])
+    # (Pdb) ratios
+    # array([ 0.5,  1. ,  2. ])
 
     # Enumerate heights and widths from scales and ratios
     heights = scales / np.sqrt(ratios)
     widths = scales * np.sqrt(ratios)
+    # (Pdb) heights
+    # array([ 45.254834,  32.      ,  22.627417])
+    # (Pdb) widths
+    # array([ 22.627417,  32.      ,  45.254834])
 
     # Enumerate shifts in feature space
     shifts_y = np.arange(0, shape[0], anchor_stride) * feature_stride
@@ -452,15 +484,65 @@ def generate_anchors(scales, ratios, shape, feature_stride, anchor_stride):
     # Enumerate combinations of shifts, widths, and heights
     box_widths, box_centers_x = np.meshgrid(widths, shifts_x)
     box_heights, box_centers_y = np.meshgrid(heights, shifts_y)
+    # (Pdb) box_widths.shape
+    # (65536, 3)
+    # (Pdb) box_widths
+    # array([[ 22.627417,  32.      ,  45.254834],
+    #        [ 22.627417,  32.      ,  45.254834],
+    #        [ 22.627417,  32.      ,  45.254834],
+    #        ...,
+    #        [ 22.627417,  32.      ,  45.254834],
+    #        [ 22.627417,  32.      ,  45.254834],
+    #        [ 22.627417,  32.      ,  45.254834]])
+    # (Pdb) box_heights.shape
+    # (65536, 3)
+    # (Pdb) bh
+    # array([ 45.254834,  32.      ,  22.627417])
+    # deltas=box_heights - bh
+    # (Pdb) deltas.min(), deltas.max()
+    # (-4.0609648976897006e-09, 0.0)
+
+    # (Pdb) box_heights
+    # array([[ 45.254834,  32.      ,  22.627417],
+    #        [ 45.254834,  32.      ,  22.627417],
+    #        [ 45.254834,  32.      ,  22.627417],
+    #        ...,
+    #        [ 45.254834,  32.      ,  22.627417],
+    #        [ 45.254834,  32.      ,  22.627417],
+    #        [ 45.254834,  32.      ,  22.627417]])
 
     # Reshape to get a list of (y, x) and a list of (h, w)
     box_centers = np.stack(
         [box_centers_y, box_centers_x], axis=2).reshape([-1, 2])
+    # (Pdb) box_centers.shape
+    # (196608, 2)
+    # (Pdb) box_centers_y
+    # array([[   0,    0,    0],
+    #        [   0,    0,    0],
+    #        [   0,    0,    0],
+    #        ...,
+    #        [1020, 1020, 1020],
+    #        [1020, 1020, 1020],
+    #        [1020, 1020, 1020]])
+    # (Pdb) box_centers_x
+    # array([[   0,    0,    0],
+    #        [   4,    4,    4],
+    #        [   8,    8,    8],
+    #        ...,
+    #        [1012, 1012, 1012],
+    #        [1016, 1016, 1016],
+    #        [1020, 1020, 1020]])
+    # (Pdb) box_centers_x.shape,  box_centers_y.shape
+    # ((65536, 3), (65536, 3))
+
     box_sizes = np.stack([box_heights, box_widths], axis=2).reshape([-1, 2])
+    # (Pdb) np.unique(box_sizes.astype(int))
+    # array([22, 32, 45])
 
     # Convert to corner coordinates (y1, x1, y2, x2)
     boxes = np.concatenate([box_centers - 0.5 * box_sizes,
                             box_centers + 0.5 * box_sizes], axis=1)
+
     return boxes
 
 
@@ -481,6 +563,55 @@ def generate_pyramid_anchors(scales, ratios, feature_shapes, feature_strides,
     for i in range(len(scales)):
         anchors.append(generate_anchors(scales[i], ratios, feature_shapes[i],
                                         feature_strides[i], anchor_stride))
+
+    # scales = array([32, 32, 32])
+    # ratios = array([ 0.5,  1. ,  2. ])
+    # shape = array([256, 256])
+    # feature_stride = 4
+    # anchor_stride = 1
+    # (Pdb) boxes.shape
+    # (196608, 4)
+
+    # (Pdb) a
+    # scales = array([64, 64, 64])
+    # ratios = array([ 0.5,  1. ,  2. ])
+    # shape = array([128, 128])
+    # feature_stride = 8
+    # anchor_stride = 1
+    # (Pdb) boxes.shape
+    # (49152, 4)
+
+    # (Pdb) a
+    # scales = array([128, 128, 128])
+    # ratios = array([ 0.5,  1. ,  2. ])
+    # shape = array([64, 64])
+    # feature_stride = 16
+    # anchor_stride = 1
+    # (Pdb)  boxes.shape
+    # (12288, 4)
+
+    # (Pdb) a
+    # scales = array([256, 256, 256])
+    # ratios = array([ 0.5,  1. ,  2. ])
+    # shape = array([32, 32])
+    # feature_stride = 32
+    # anchor_stride = 1
+    # (Pdb) (Pdb)  boxes.shape
+    # (Pdb) (3072, 4)
+
+    # (Pdb) a
+    # scales = array([512, 512, 512])
+    # ratios = array([ 0.5,  1. ,  2. ])
+    # shape = array([16, 16])
+    # feature_stride = 64
+    # anchor_stride = 1
+    # (Pdb) boxes.shape
+    # (768, 4)
+    # (Pdb)
+
+    # (Pdb) 196608 + 49152 + 12288 + 3072 + 768
+    # 261888
+
     return np.concatenate(anchors, axis=0)
 
 
@@ -547,6 +678,7 @@ def display_instances(image, boxes, masks, class_ids, class_names,
     figsize: (optional) the size of the image.
     """
     # Number of instances
+    # pdb.set_trace()
     N = boxes.shape[0]
     if not N:
         print("\n*** No instances to display *** \n")
@@ -591,7 +723,7 @@ def display_instances(image, boxes, masks, class_ids, class_names,
 
         # Mask
         mask = masks[:, :, i]
-        masked_image = apply_mask(masked_image, mask, color, alpha=0.3)
+        masked_image = apply_mask(masked_image, mask, color, alpha=0.0)
 
         # Mask Polygon
         # Pad to ensure proper polygons for masks that touch image edges.
