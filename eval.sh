@@ -1,2 +1,2 @@
-python coco.py evaluate --dataset data --model "coco"
+python coco.py evaluate --dataset data
 

@@ -26,9 +26,6 @@ class Config(object):
     # experiment is running.
     NAME = None  # Override in sub-classes
 
-    # Path to pretrained imagenet model
-    IMAGENET_MODEL_PATH = os.path.join(os.getcwd(), "models/resnet101_imagenet.pth")
-
     # NUMBER OF GPUs to use. For CPU use 0
     GPU_COUNT = 1
 
@@ -75,27 +72,19 @@ class Config(object):
     # You can reduce this during training to generate more propsals.
     RPN_NMS_THRESHOLD = 0.7
 
+    # ROIs kept after non-maximum supression (training and inference)
+    RPN_NMS_MAX_ROIS_NUM = 500
+
     # How many anchors per image to use for RPN training
     # RPN_TRAIN_ANCHORS_PER_IMAGE = 256
     RPN_TRAIN_ANCHORS_PER_IMAGE = 128
-
-    # ROIs kept after non-maximum supression (training and inference)
-    # POST_NMS_ROIS_TRAINING = 1000
-    # POST_NMS_ROIS_INFERENCE = 500
-    POST_NMS_ROIS_TRAINING = 500
-    POST_NMS_ROIS_INFERENCE = 250
-
-    # If enabled, resizes instance masks to a smaller size to reduce
-    # memory load. Recommended when using high-resolution images.
-    USE_MINI_MASK = True
-    MINI_MASK_SHAPE = (56, 56)  # (height, width) of the mini-mask
 
     # Input image resing
     # Images are resized such that the smallest side is >= IMAGE_MIN_DIM and
     # the longest side is <= IMAGE_MAX_DIM. In case both conditions can't
     # be satisfied together the IMAGE_MAX_DIM is enforced.
-    IMAGE_MIN_DIM = 400
-    IMAGE_MAX_DIM = 512
+    IMAGE_MIN_DIM = 800
+    IMAGE_MAX_DIM = 1024
     # If True, pad images with zeros such that they're (max_dim by max_dim)
     IMAGE_PADDING = True  # currently, the False option is not supported
 
@@ -180,3 +169,36 @@ class Config(object):
             if not a.startswith("__") and not callable(getattr(self, a)):
                 print("{:30} {}".format(a, getattr(self, a)))
         print()
+
+
+class CocoConfig(Config):
+    """Configuration for training on MS COCO.
+    Derives from the base Config class and overrides values specific
+    to the COCO dataset.
+    """
+
+    # Give the configuration a recognizable name
+    NAME = "coco"
+
+    # We use one GPU with 8GB memory, which can fit one image.
+    # Adjust down if you use a smaller GPU.
+    IMAGES_PER_GPU = 1
+
+    # Uncomment to train on 8 GPUs (default is 1)
+    # GPU_COUNT = 8
+
+    # Number of classes (including background)
+    NUM_CLASSES = 1 + 80  # COCO has 80 classes
+
+    # Root directory of the project
+    ROOT_DIR = os.getcwd()
+
+    # Path to trained weights file
+    COCO_MODEL_PATH = os.path.join(ROOT_DIR, "models/mask_rcnn_coco.pth")
+
+class CocoInferenceConfig(CocoConfig):
+    # Set batch size to 1 since we'll be running inference on
+    # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
+    GPU_COUNT = 1
+    IMAGES_PER_GPU = 1
+    DETECTION_MIN_CONFIDENCE = 0
