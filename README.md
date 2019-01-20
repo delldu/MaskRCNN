@@ -69,12 +69,16 @@ Total time:  401.12283730506897
 1. Clone this repository.
 
         git clone https://github.com/delldu/MaskRCNN.git
-        
-        cd MaskRCNN/models
-        ./model_merge.sh  
-        cd ..  
 
-2. Install c++ extension packages
+2. Download pre-trained model.
+
+　　　Download mask_rcnn_coco.pth from https://pan.baidu.com/s/1HVUdfrFKPMGlMcUP7mXZGw
+
+ and put it under  models .
+
+
+
+3. Install c++ extension packages
 
        cd c++ext  
        make  
@@ -91,5 +95,12 @@ Total time:  401.12283730506897
 1. Mask R-CNN https://arxiv.org/abs/1703.06870
 
 2. https://github.com/multimodallearning/pytorch-mask-rcnn
+
+
+
+## Chinese Document
+
+[中文文档](docs/explore.pdf)
+
 
 

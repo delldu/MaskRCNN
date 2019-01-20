@@ -335,6 +335,7 @@ def evaluate_coco(model,
         image_results = build_coco_results(dataset, coco_image_ids[i:i + 1],
                                            r["rois"], r["class_ids"],
                                            r["scores"], r["masks"])
+        # pdb.set_trace()
         results.extend(image_results)
 
     # Load results. This modifies results with additional attributes.
