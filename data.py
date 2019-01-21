@@ -188,17 +188,11 @@ def boxes_overlaps(boxes1, boxes2):
 
     return overlaps
 
-
-def even_number(x):
-    """Round to x to even number."""
-    return (x // 2) * 2
-
-
 def encode_image(image, min_dim, max_dim):
     """Encode image. Suppose min_dim and max_dim are even numbers."""
     scale = 1
-    h = even_number(image.height)
-    w = even_number(image.width)
+    h = image.height
+    w = image.width
     window = [0, 0, h, w]
 
     # Scale up but not down
@@ -212,8 +206,8 @@ def encode_image(image, min_dim, max_dim):
     # Resize image ?
     if scale != 1:
         # Get new height and width
-        nh = even_number(round(h * scale))
-        nw = even_number(round(w * scale))
+        nh = round(h * scale)
+        nw = round(w * scale)
         image = transform.Resize((nh, nw))(image)
 
         # Padding ...
@@ -233,8 +227,8 @@ def decode_image(image, scale, cropbox):
     """Decode image."""
     image = transform.CenterCrop((cropbox.height(), cropbox.width()))(image)
     if scale != 1:
-        nh = even_number(round(1.0 / scale * image.height))
-        nw = even_number(round(1.0 / scale * image.width))
+        nh = round(1.0 / scale * image.height)
+        nw = round(1.0 / scale * image.width)
         image = transform.Resize((nh, nw))(image)
     return image
 
@@ -257,10 +251,8 @@ def encode_masks(masks, scale, cropbox):
     padding = (cropbox.left(), cropbox.top(), cropbox.left(), cropbox.top())
     for i in range(masks.size(0)):
         maskimg = Image.fromarray(masks[i].cpu().numpy()).convert('L')
-        h = even_number(maskimg.height)
-        w = even_number(maskimg.width)
-        nh = even_number(round(h * scale))
-        nw = even_number(round(w * scale))
+        nh = round(maskimg.height * scale)
+        nw = round(maskimg.width * scale)
         maskimg = transform.Resize((nh, nw))(maskimg)
         maskimg = transform.Pad(padding)(maskimg)
         all.append(torch.from_numpy(np.array(maskimg)))
@@ -281,8 +273,8 @@ def decode_masks(masks, scale, cropbox):
         maskimg = transform.CenterCrop((cropbox.height(),
                                         cropbox.width()))(maskimg)
         # Scale
-        nh = even_number(round(maskimg.height * 1.0 / scale))
-        nw = even_number(round(maskimg.width * 1.0 / scale))
+        nh = round(maskimg.height * 1.0 / scale)
+        nw = round(maskimg.width * 1.0 / scale)
         maskimg = transform.Resize((nh, nw))(maskimg)
         all.append(torch.from_numpy(np.array(maskimg)))
 
@@ -865,12 +857,14 @@ class CocoMaskRCNNDataset(dataset.CocoDetection):
             boxes = torch.Tensor(boxes)
             masks = torch.stack(masks, dim=0)
         else:
+            print("Warning ...", index, self.image_name(index))
             # Fake label_ids = [0], Backgroud
             # boxes = [[0, 0, image.height, image.width]]
             # masks = [[1, ..., 1]]
             label_ids = torch.IntTensor([0])
-            boxes = torch.Tensor([[0, 0, image.size(1), image.size(2)]])
-            masks = torch.ones(1, image.size(1), image.size(2))
+            # image is 'PIL.Image.Image'>
+            boxes = torch.Tensor([[0, 0, image.height, image.width]])
+            masks = torch.ones(1, image.height, image.width)
 
         # If more instances than fits in the array, sub-sample from them.
         m = boxes.size(0)
