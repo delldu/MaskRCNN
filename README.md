@@ -64,6 +64,8 @@ Total time:  401.12283730506897
 
 * matplotlib, scipy, scikit-image
 
+pip install scipy==1.2.1
+
 
 ## Installation
 1. Clone this repository.
